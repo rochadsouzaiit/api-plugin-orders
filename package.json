@@ -1,5 +1,5 @@
 {
-  "name": "@reactioncommerce/api-plugin-orders",
+  "name": "@inflightit/rc-api-plugin-orders",
   "description": "Orders plugin for the Reaction API",
   "version": "0.0.1",
   "main": "index.js",
