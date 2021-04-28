@@ -8,7 +8,7 @@ import summary from "./summary.js";
 export default {
   _id: (node) => encodeOrderFulfillmentGroupOpaqueId(node._id),
   data(node) {
-    if (node.type === "shipping") {
+    if (node.type === "shipping" || node.type === "pickup") {
       return { gqlType: "ShippingOrderFulfillmentGroupData", shippingAddress: node.address };
     }
     return null;

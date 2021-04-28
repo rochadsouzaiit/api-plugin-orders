@@ -24,6 +24,26 @@ function formatDateForEmail(date) {
 }
 
 /**
+ * @summary Get tax number from metafields
+ * @param {Object} metafields - App context´
+ * @returns {String} Tax number
+ */
+
+const TAX_NUMBER_METAFIELD = {
+  key: "TAXNUMBER",
+  namespace: "BILLING"
+};
+const getTaxNumber = (metafields) => {
+  if (!metafields) return null;
+  const metafield = metafields.find((mf) =>
+    (mf.key || "").toUpperCase() === TAX_NUMBER_METAFIELD.key &&
+      (mf.namespace || "").toUpperCase() === TAX_NUMBER_METAFIELD.namespace);
+
+  if (!metafield) return null;
+  return metafield.value;
+};
+
+/**
  * @summary Builds data for rendering order emails
  * @param {Object} context - App context
  * @param {Object} input - Necessary input
@@ -50,23 +70,36 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
   const taxes = order.shipping.reduce((sum, group) => sum + group.invoice.taxes, 0);
   const shippingCost = order.shipping.reduce((sum, group) => sum + group.invoice.shipping, 0);
 
-  const { address: shippingAddress, shipmentMethod, tracking } = order.shipping[0];
+  const {
+    address: shippingAddress,
+    shipmentMethod,
+    tracking
+  } = order.shipping[0];
   const { carrier } = shipmentMethod;
-  const [firstPayment] = (order.payments || []);
+  const [firstPayment] = order.payments || [];
   const { address: paymentBillingAddress, currency } = firstPayment || {};
 
-  const shippingAddressForEmail = shippingAddress ? {
-    address: `${shippingAddress.address1}${shippingAddress.address2 ? ` ${shippingAddress.address2}` : ""}`,
-    city: shippingAddress.city,
-    fullName: shippingAddress.fullName,
-    postal: shippingAddress.postal,
-    region: shippingAddress.region
-  } : null;
+  const shippingAddressForEmail = shippingAddress
+    ? {
+      address: `${shippingAddress.address1}${
+        shippingAddress.address2 ? ` ${shippingAddress.address2}` : ""
+      }`,
+      city: shippingAddress.city,
+      fullName: shippingAddress.fullName,
+      postal: shippingAddress.postal,
+      region: shippingAddress.region,
+      phone: shippingAddress.phone
+    }
+    : null;
+
+  const taxNumber = getTaxNumber(shippingAddress.metafields);
 
   let billingAddressForEmail = null;
   if (order.billingAddress) {
     billingAddressForEmail = {
-      address: `${order.billingAddress.address1}${order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""}`,
+      address: `${order.billingAddress.address1}${
+        order.billingAddress.address2 ? ` ${order.billingAddress.address2}` : ""
+      }`,
       city: order.billingAddress.city,
       fullName: order.billingAddress.fullName,
       postal: order.billingAddress.postal,
@@ -86,8 +119,13 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
 
   if (Array.isArray(order.payments)) {
     const promises = order.payments.map(async (payment) => {
-      const shopRefunds = await context.queries.getPaymentMethodConfigByName(payment.name).functions.listRefunds(context, payment);
-      const shopRefundsWithPaymentId = shopRefunds.map((shopRefund) => ({ ...shopRefund, paymentId: payment._id }));
+      const shopRefunds = await context.queries
+        .getPaymentMethodConfigByName(payment.name)
+        .functions.listRefunds(context, payment);
+      const shopRefundsWithPaymentId = shopRefunds.map((shopRefund) => ({
+        ...shopRefund,
+        paymentId: payment._id
+      }));
       refunds.push(...shopRefundsWithPaymentId);
     });
     await Promise.all(promises);
@@ -113,12 +151,18 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
       price: {
         ...item.price,
         // Add displayAmount to match user currency settings
-        displayAmount: formatMoney(item.price.amount * userCurrencyExchangeRate, userCurrency)
+        displayAmount: formatMoney(
+          item.price.amount * userCurrencyExchangeRate,
+          userCurrency
+        )
       },
       subtotal: {
         ...item.subtotal,
         // Add displayAmount to match user currency settings
-        displayAmount: formatMoney(item.subtotal.amount * userCurrencyExchangeRate, userCurrency)
+        displayAmount: formatMoney(
+          item.subtotal.amount * userCurrencyExchangeRate,
+          userCurrency
+        )
       },
       // These next two are for backward compatibility with existing email templates.
       // New templates should use `imageURLs` instead.
@@ -130,7 +174,10 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
   }));
 
   // Loop through all items in the order. The items are split into individual items
-  const orderItems = adjustedOrderGroups.reduce((list, group) => [...list, ...group.items], []);
+  const orderItems = adjustedOrderGroups.reduce(
+    (list, group) => [...list, ...group.items],
+    []
+  );
   for (const orderItem of orderItems) {
     // Find an existing item in the combinedItems array
     const foundItem = combinedItems.find((combinedItem) => combinedItem.variantId === orderItem.variantId);
@@ -152,7 +199,10 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
   let orderUrl = _.get(shop, "storefrontUrls.storefrontOrderUrl", null);
   if (orderUrl) {
     let token = "";
-    orderUrl = orderUrl.replace(":orderId", encodeURIComponent(order.referenceId));
+    orderUrl = orderUrl.replace(
+      ":orderId",
+      encodeURIComponent(order.referenceId)
+    );
     const isAnonymous = !order.accountId;
     const wantsToken = orderUrl.includes(":token");
     if (isAnonymous && wantsToken) {
@@ -164,7 +214,9 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
 
   const physicalAddress = (shop.addressBook && shop.addressBook[0]) || null;
   if (physicalAddress) {
-    physicalAddress.address = `${physicalAddress.address1}${physicalAddress.address2 ? ` ${physicalAddress.address2}` : ""}`;
+    physicalAddress.address = `${physicalAddress.address1}${
+      physicalAddress.address2 ? ` ${physicalAddress.address2}` : ""
+    }`;
   }
 
   // Merge data into single object to pass to email template
@@ -172,17 +224,31 @@ export default async function getDataForOrderEmailDefault(context, { order }) {
     account,
     billing: {
       address: billingAddressForEmail,
+      taxNumber,
       payments: (order.payments || []).map((payment) => ({
         displayName: payment.displayName,
-        displayAmount: formatMoney(payment.amount * userCurrencyExchangeRate, userCurrency)
+        displayAmount: formatMoney(
+          payment.amount * userCurrencyExchangeRate,
+          userCurrency
+        )
       })),
       subtotal: formatMoney(subtotal * userCurrencyExchangeRate, userCurrency),
-      shipping: formatMoney(shippingCost * userCurrencyExchangeRate, userCurrency),
+      shipping: formatMoney(
+        shippingCost * userCurrencyExchangeRate,
+        userCurrency
+      ),
       taxes: formatMoney(taxes * userCurrencyExchangeRate, userCurrency),
-      discounts: formatMoney(discounts * userCurrencyExchangeRate, userCurrency),
-      refunds: formatMoney(refundTotal * userCurrencyExchangeRate, userCurrency),
+      discounts: formatMoney(
+        discounts * userCurrencyExchangeRate,
+        userCurrency
+      ),
+      refunds: formatMoney(
+        refundTotal * userCurrencyExchangeRate,
+        userCurrency
+      ),
       total: formatMoney(
-        (subtotal + shippingCost + taxes - discounts) * userCurrencyExchangeRate,
+        (subtotal + shippingCost + taxes - discounts) *
+          userCurrencyExchangeRate,
         userCurrency
       ),
       adjustedTotal: formatMoney(

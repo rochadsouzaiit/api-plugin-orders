@@ -749,6 +749,11 @@ input OrderInput {
   order, and those shop IDs may or may not match this one.
   """
   shopId: String!
+
+  """
+  Client special requests, extra info or something worthy to be added as a note to the order.
+  """
+  note: String
 }
 
 "Input for adding order payments"
